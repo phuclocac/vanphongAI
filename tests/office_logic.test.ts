@@ -397,44 +397,83 @@ test('loadSavedAgentApiKeys, resolveAgentApiKey, and resolveAgentKeyPlan priorit
   );
 });
 
-test('index.html enforces cleaned UI copy, 4 work modes, Nội quy / Chỉ thị riêng, modular TS imports, and CEO naming', () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
-  assert.equal(OPENROUTER_API_URL, 'https://openrouter.ai/api/v1/chat/completions');
-  assert.match(html, /\/src\/core\/workModes\.ts/);
-  assert.match(html, /\/src\/core\/analytics\.ts/);
-  assert.match(html, /\/src\/services\/openrouter\.ts/);
-  assert.match(html, /Chế độ làm việc/);
-  assert.match(html, /Kế hoạch &amp; Dự án|Kế hoạch & Dự án/);
-  assert.match(html, /Học tập &amp; Nghiên cứu|Học tập & Nghiên cứu/);
-  assert.match(html, /Kinh tế &amp; Kinh doanh|Kinh tế & Kinh doanh/);
-  assert.match(html, /Đa năng \/ Tùy chỉnh/);
-  assert.match(html, /Nhập yêu cầu, mục tiêu hoặc vấn đề cần xử lý\.\.\./);
-  assert.match(html, />Bắt đầu<\/span>/);
-  assert.match(html, /Nội quy \/ Chỉ thị riêng/);
-  assert.match(html, /Khôi phục mặc định/);
-  assert.match(html, /session-total-tokens/);
-  assert.match(html, /openrouter\/free/);
-  assert.match(html, /runHybrid3BeatSequence/);
-  assert.match(html, /API Key riêng \(tùy chọn\)/);
-  assert.match(html, /Đang ngủ/);
-  assert.match(html, /Zzz/);
-  assert.match(html, /CEO Phúc/);
-  assert.match(html, /Yêu cầu Thư ký chỉnh sửa, đào sâu hoặc hỏi thêm về báo cáo này\.\.\./);
-  assert.match(html, /Cập nhật báo cáo/);
-  assert.match(html, /Sổ tay Ký ức \(Tự động ghi nhớ\)/);
-  assert.match(html, /Xóa ký ức/);
-  assert.match(html, /Lịch sử/);
-  assert.match(html, /Tải \.md/);
+function readProjectFiles(relPaths: string[]): string {
+  return relPaths
+    .map((rel) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8'))
+    .join('\n');
+}
 
-  assert.doesNotMatch(html, /google\/gemma-3-27b-it:free/);
-  assert.doesNotMatch(html, /meta-llama\/llama-3\.3-70b-instruct:free/);
-  assert.doesNotMatch(html, /Điền đề bài mẫu/);
-  assert.doesNotMatch(html, /Đề bài kinh tế \/ Ý tưởng kinh doanh/);
-  assert.doesNotMatch(html, /Giao việc cho Team/);
-  assert.doesNotMatch(html, /Chế độ phân tích/);
-  assert.doesNotMatch(html, /Giám Đốc|Giám đốc/);
-  assert.doesNotMatch(html, /towerInst|towerCrownInst|towerSpecs/);
-  assert.doesNotMatch(html, /@google\/genai/);
+function readAllSrcSource(): string {
+  const srcDir = path.resolve(process.cwd(), 'src');
+  const walk = (dir: string): string[] => {
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        out.push(...walk(full));
+      } else if (/\.(ts|tsx|css)$/.test(entry.name)) {
+        out.push(fs.readFileSync(full, 'utf8'));
+      }
+    }
+    return out;
+  };
+  return walk(srcDir).join('\n');
+}
+
+test('React + TypeScript app enforces cleaned UI copy, 4 work modes, Nội quy / Chỉ thị riêng, modular TS imports, and CEO naming', () => {
+  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const mainTsx = fs.readFileSync(path.resolve(process.cwd(), 'src/main.tsx'), 'utf8');
+  const allSrc = readAllSrcSource();
+  const combined = `${html}\n${allSrc}`;
+
+  assert.equal(OPENROUTER_API_URL, 'https://openrouter.ai/api/v1/chat/completions');
+  assert.match(html, /\/src\/main\.tsx/);
+  assert.match(html, /\/src\/index\.css/);
+  assert.match(mainTsx, /from '\.\/App(?:\.tsx)?'/);
+  assert.match(allSrc, /\.\/core\/workModes/);
+  assert.match(allSrc, /\.\/core\/analytics/);
+  assert.match(allSrc, /\.\/services\/openrouter/);
+  assert.match(allSrc, /Chế độ làm việc/);
+  assert.match(allSrc, /Kế hoạch &amp; Dự án|Kế hoạch & Dự án/);
+  assert.match(allSrc, /Học tập &amp; Nghiên cứu|Học tập & Nghiên cứu/);
+  assert.match(allSrc, /Kinh tế &amp; Kinh doanh|Kinh tế & Kinh doanh/);
+  assert.match(allSrc, /Đa năng \/ Tùy chỉnh/);
+  assert.match(allSrc, /Nhập yêu cầu, mục tiêu hoặc vấn đề cần xử lý\.\.\./);
+  assert.match(allSrc, /Bắt đầu/);
+  assert.match(allSrc, /Nội quy \/ Chỉ thị riêng/);
+  assert.match(allSrc, /Khôi phục mặc định/);
+  assert.match(allSrc, /session-total-tokens/);
+  assert.match(allSrc, /openrouter\/free/);
+  assert.match(allSrc, /runHybrid3BeatSequence/);
+  assert.match(allSrc, /API Key riêng \(tùy chọn\)/);
+  assert.match(allSrc, /Đang ngủ/);
+  assert.match(allSrc, /Zzz/);
+  assert.match(allSrc, /CEO Phúc/);
+  assert.match(allSrc, /Yêu cầu Thư ký chỉnh sửa, đào sâu hoặc hỏi thêm về báo cáo này\.\.\./);
+  assert.match(allSrc, /Cập nhật báo cáo/);
+  assert.match(allSrc, /Sổ tay Ký ức \(Tự động ghi nhớ\)/);
+  assert.match(allSrc, /Xóa ký ức/);
+  assert.match(allSrc, /Lịch sử/);
+  assert.match(allSrc, /Tải \.md/);
+
+  const uiAndApp = [
+    html,
+    mainTsx,
+    fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8'),
+    ...fs
+      .readdirSync(path.resolve(process.cwd(), 'src/components'))
+      .map((f) => fs.readFileSync(path.resolve(process.cwd(), 'src/components', f), 'utf8')),
+  ].join('\n');
+
+  assert.doesNotMatch(uiAndApp, /google\/gemma-3-27b-it:free/);
+  assert.doesNotMatch(uiAndApp, /meta-llama\/llama-3\.3-70b-instruct:free/);
+  assert.doesNotMatch(combined, /Điền đề bài mẫu/);
+  assert.doesNotMatch(combined, /Đề bài kinh tế \/ Ý tưởng kinh doanh/);
+  assert.doesNotMatch(combined, /Giao việc cho Team/);
+  assert.doesNotMatch(combined, /Chế độ phân tích/);
+  assert.doesNotMatch(combined, /Giám Đốc|Giám đốc/);
+  assert.doesNotMatch(combined, /towerInst|towerCrownInst|towerSpecs/);
+  assert.doesNotMatch(combined, /@google\/genai/);
 });
 
 test('Core summary extraction, Company Memory, follow-up QA prompt, history cap (10), and Markdown export work cleanly', () => {
@@ -504,12 +543,17 @@ test('Core summary extraction, Company Memory, follow-up QA prompt, history cap 
 });
 
 test('Cyber-Executive UI controls, Sound presets, pipeline progress, neural ticker, and 3D beam transitions work accurately', () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
-  assert.match(html, /Chế độ Quay/);
-  assert.match(html, /Live Neural Ticker/);
-  assert.match(html, /sound-toggle-btn/);
-  assert.match(html, /pipeline-progress-bar/);
-  assert.match(html, /cinema-hide-tech/);
+  const uiSrc = readProjectFiles([
+    'src/components/ControlPanel.tsx',
+    'src/components/PromptDock.tsx',
+    'src/components/ExpertCouncilSidebar.tsx',
+    'src/index.css',
+  ]);
+  assert.match(uiSrc, /Chế độ Quay/);
+  assert.match(uiSrc, /Live Neural Ticker/);
+  assert.match(uiSrc, /sound-toggle-btn/);
+  assert.match(uiSrc, /pipeline-progress-bar/);
+  assert.match(uiSrc, /cinema-hide-tech/);
 
   assert.ok(SOUND_PRESETS.click.length >= 1);
   assert.ok(SOUND_PRESETS.beat2.length >= 2);
@@ -621,12 +665,12 @@ test('Cyber-Executive UI controls, Sound presets, pipeline progress, neural tick
 });
 
 test('getAgentProgressState tracks active circular progress rings cleanly and CEO yellow window artifacts are fixed', () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
-  assert.match(html, /class="agent-progress-wrap hidden"/);
-  assert.match(html, /class="agent-progress-arc"/);
-  assert.match(html, /skyTopBar/);
-  assert.doesNotMatch(html, /\bskyFrame\b/);
-  assert.doesNotMatch(html, /\bchandelierRing\b/);
+  const canvasSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/Office3DCanvas.tsx'), 'utf8');
+  assert.match(canvasSrc, /class="agent-progress-wrap hidden"/);
+  assert.match(canvasSrc, /class="agent-progress-arc"/);
+  assert.match(canvasSrc, /skyTopBar/);
+  assert.doesNotMatch(canvasSrc, /\bskyFrame\b/);
+  assert.doesNotMatch(canvasSrc, /\bchandelierRing\b/);
 
   assert.deepEqual(
     { ...getAgentProgressState('idle', '', 0, 1000) },
@@ -676,15 +720,18 @@ test('getAgentProgressState tracks active circular progress rings cleanly and CE
 });
 
 test('35s timeout AbortController, openrouter/free auto-fallback, max_tokens=4096, concise prompts, sealed West wall, and collapsible HUD panel', async () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const archSrc = readProjectFiles([
+    'src/components/Office3DCanvas.tsx',
+    'src/components/ControlPanel.tsx',
+  ]);
 
   // Architectural & UI checks
-  assert.match(html, /backWallWestBottom/);
-  assert.match(html, /backWallWestTop/);
-  assert.doesNotMatch(html, /\bbarGlow\b/);
-  assert.match(html, /id="toggle-control-btn"/);
-  assert.match(html, /setControlPanelCollapsed/);
-  assert.match(html, /Lỗi \(Quá thời gian\)/);
+  assert.match(archSrc, /backWallWestBottom/);
+  assert.match(archSrc, /backWallWestTop/);
+  assert.doesNotMatch(archSrc, /\bbarGlow\b/);
+  assert.match(archSrc, /id="toggle-control-btn"/);
+  assert.match(archSrc, /onToggleCollapse/);
+  assert.match(archSrc, /Lỗi \(Quá thời gian\)/);
 
   assert.equal(RETRY_CONFIG.requestTimeoutMs, 35000);
   assert.equal(RETRY_CONFIG.defaultMaxTokens, 4096);
@@ -807,13 +854,14 @@ test('35s timeout AbortController, openrouter/free auto-fallback, max_tokens=409
 
 test('OpenRouter-only UI cleanup, automatic Global Key Fallback on 429/401/402/403, HTTP 404 rescue to openrouter/free, and exact error labels work end-to-end', async () => {
   const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
-  assert.match(html, /id="api-key-input"/);
-  assert.doesNotMatch(html, /id="gemini-api-key-section"/);
-  assert.doesNotMatch(html, /id="gemini-api-key-input"/);
-  assert.doesNotMatch(html, /id="toggle-gemini-key-visibility"/);
-  assert.doesNotMatch(html, /generativelanguage\.googleapis\.com/);
-  assert.doesNotMatch(html, /\(Google Free/);
-  assert.doesNotMatch(html, /Gặp lỗi API/);
+  const allSrc = `${html}\n${readAllSrcSource()}`;
+  assert.match(allSrc, /id="api-key-input"/);
+  assert.doesNotMatch(allSrc, /id="gemini-api-key-section"/);
+  assert.doesNotMatch(allSrc, /id="gemini-api-key-input"/);
+  assert.doesNotMatch(allSrc, /id="toggle-gemini-key-visibility"/);
+  assert.doesNotMatch(allSrc, /generativelanguage\.googleapis\.com/);
+  assert.doesNotMatch(allSrc, /\(Google Free/);
+  assert.doesNotMatch(allSrc, /Gặp lỗi API/);
 
   // 1) Automatic fallback from private key to global key on 429, 401, 402, and 403
   for (const status of [429, 401, 402, 403]) {
@@ -961,12 +1009,15 @@ test('OpenRouter-only UI cleanup, automatic Global Key Fallback on 429/401/402/4
 });
 
 test('Right sidebar uses uniform top-4 bottom-4 right-4 viewport framing, internal Thu gọn button, and unified min-h-0 scroll region', () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const sidebarSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/ExpertCouncilSidebar.tsx'),
+    'utf8'
+  );
 
-  const asideStart = html.indexOf('<aside\n      id="report-sidebar"');
-  const asideEnd = html.indexOf('</aside>', asideStart);
+  const asideStart = sidebarSrc.indexOf('<aside');
+  const asideEnd = sidebarSrc.indexOf('</aside>', asideStart);
   assert.ok(asideStart !== -1 && asideEnd !== -1, 'report-sidebar aside block must exist');
-  const asideHtml = html.slice(asideStart, asideEnd + '</aside>'.length);
+  const asideHtml = sidebarSrc.slice(asideStart, asideEnd + '</aside>'.length);
 
   assert.match(asideHtml, /top-4 bottom-4 right-4/);
   assert.match(asideHtml, /max-h-\[calc\(100vh-2rem\)\]/);
@@ -979,53 +1030,52 @@ test('Right sidebar uses uniform top-4 bottom-4 right-4 viewport framing, intern
   const toggleBtnIdx = asideHtml.indexOf('id="toggle-sidebar-btn"');
   const reportScrollIdx = asideHtml.indexOf('id="report-scroll"');
   const progressListIdx = asideHtml.indexOf('id="agent-progress-list"');
-  const reportSectionsIdx = asideHtml.indexOf('id="report-sections"');
+  const reportSectionsIdx = asideHtml.indexOf('<ReportSections');
 
   assert.ok(drawerStart !== -1 && toggleBtnIdx > drawerStart, 'toggle-sidebar-btn must be inside sidebar-drawer');
   assert.ok(
     reportScrollIdx !== -1 && progressListIdx > reportScrollIdx && reportSectionsIdx > reportScrollIdx,
-    'agent-progress-list and report-sections must live inside unified report-scroll'
+    'agent-progress-list and ReportSections must live inside unified report-scroll'
   );
-  assert.match(asideHtml, /id="report-scroll"[^>]*class="[^"]*flex-1 overflow-y-auto min-h-0/);
-  assert.match(html, /id="expand-sidebar-btn"/);
+  assert.match(asideHtml, /id="report-scroll"[\s\S]*?flex-1 overflow-y-auto min-h-0/);
+  assert.match(sidebarSrc, /id="expand-sidebar-btn"/);
 });
 
 test('3D nameplate Zzz containment, Siêu nhân Điện quang + shock VFX, generalized Memory prompts, and errorType scope + error alerts', () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const cssSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8');
+  const canvasSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/Office3DCanvas.tsx'), 'utf8');
+  const soundSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/utils/soundEngine.ts'), 'utf8');
+  const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
 
   // 1) Nameplate Zzz fit rules
-  assert.match(html, /min-width:\s*176px;/);
-  assert.doesNotMatch(html, /max-width:\s*212px;/);
-  assert.match(html, /class="agent-label-card w-max max-w-\[280px\] px-3 py-2 flex flex-col gap-1 text-left"/);
-  assert.match(html, /class="agent-badge-slot[^"]*shrink-0 whitespace-nowrap"/);
-  assert.match(html, /class="agent-sleep-zzz[^"]*whitespace-nowrap">Zzz<\/span>/);
+  assert.match(cssSrc, /min-width:\s*176px;/);
+  assert.doesNotMatch(cssSrc, /max-width:\s*212px;/);
+  assert.match(canvasSrc, /class="agent-label-card w-max max-w-\[280px\] px-3 py-2 flex flex-col gap-1 text-left"/);
+  assert.match(canvasSrc, /class="agent-badge-slot[^"]*shrink-0 whitespace-nowrap"/);
+  assert.match(canvasSrc, /class="agent-sleep-zzz[^"]*whitespace-nowrap">Zzz<\/span>/);
 
   // 2) 3D Electric Superhero ("⚡ Siêu nhân Điện quang") avatar, stun spear, shock arcs, sound & 3x typing
-  assert.match(html, /class="janitor-label-card">⚡ Siêu nhân Điện quang<\/div>/);
-  assert.doesNotMatch(html, />⚡ Lao công</);
-  assert.match(html, /heroChestPlate/);
-  assert.match(html, /heroCapePivot/);
-  assert.match(html, /heroCrestFin/);
-  assert.match(html, /heroColorTimer/);
-  assert.match(html, /janitorWalkPhase/);
-  assert.match(html, /janitorAnimSpeed/);
-  assert.match(html, /janitorArrivedAtGoal/);
-  assert.match(html, /shockBoltCyan/);
-  assert.match(html, /shockBoltYellow/);
-  assert.match(html, /SoundEngine\.playElectricZap\(\)/);
-  assert.match(html, /const typeFreq = isShocked \? 66 : 22;/);
+  assert.match(canvasSrc, /class="janitor-label-card">⚡ Siêu nhân Điện quang<\/div>/);
+  assert.doesNotMatch(canvasSrc, />⚡ Lao công</);
+  assert.match(canvasSrc, /heroChestPlate/);
+  assert.match(canvasSrc, /heroCapePivot/);
+  assert.match(canvasSrc, /heroCrestFin/);
+  assert.match(canvasSrc, /heroColorTimer/);
+  assert.match(canvasSrc, /janitorWalkPhase/);
+  assert.match(canvasSrc, /janitorAnimSpeed/);
+  assert.match(canvasSrc, /janitorArrivedAtGoal/);
+  assert.match(canvasSrc, /shockBoltCyan/);
+  assert.match(canvasSrc, /shockBoltYellow/);
+  assert.match(canvasSrc, /callbacksRef\.current\.onElectricZap\(\)/);
+  assert.match(appSrc, /soundEngine\.playElectricZap/);
+  assert.match(canvasSrc, /const typeFreq = isShocked \? 66 : 22;/);
 
-  // 3) errorType must be defined at agent loop scope before if (rig) and if (ctrl), plus error sound alert helper
-  const syncFnStart = html.indexOf('function sync3DNameplatesAndProgress()');
-  const syncFnEnd = html.indexOf('function renderReportSections()', syncFnStart);
-  assert.ok(syncFnStart !== -1 && syncFnEnd > syncFnStart);
-  const syncFnBody = html.slice(syncFnStart, syncFnEnd);
-  const errTypeDeclIdx = syncFnBody.indexOf("const errorType = (appState.errorTypes && appState.errorTypes[agent.id]) || '';");
-  const ifRigIdx = syncFnBody.indexOf('if (rig) {');
-  const ifCtrlIdx = syncFnBody.indexOf('if (ctrl) {');
-  assert.ok(errTypeDeclIdx !== -1 && errTypeDeclIdx < ifRigIdx && errTypeDeclIdx < ifCtrlIdx, 'errorType must be hoisted before if (rig) and if (ctrl)');
-  assert.match(html, /function playErrorAlert\(errorType = 'api'\)/);
-  assert.match(html, /SoundEngine\.playErrorAlert\(errorType\)/);
+  // 3) errorType must be defined before nameplate usage, plus error sound alert helper
+  const syncIdx = canvasSrc.indexOf("const errorType = (s.errorTypes && s.errorTypes[agent.id]) || '';");
+  const badgeIfIdx = canvasSrc.indexOf("else if (status === 'error')", syncIdx);
+  assert.ok(syncIdx !== -1 && badgeIfIdx > syncIdx, 'errorType must be declared before nameplate error badge branch');
+  assert.match(soundSrc, /function playErrorAlert\(errorType = 'api'\)/);
+  assert.match(appSrc, /soundEngine\.playErrorAlert\(errorType\)/);
 
   assert.ok(Array.isArray(SOUND_PRESETS.electricZap) && SOUND_PRESETS.electricZap.length >= 2);
   assert.ok(Array.isArray(SOUND_PRESETS.errorApi) && SOUND_PRESETS.errorApi.length >= 2);
@@ -1085,13 +1135,16 @@ test('3D nameplate Zzz containment, Siêu nhân Điện quang + shock VFX, gener
 });
 
 test('Full-screen Executive Analytics Dashboard computes real KPIs, provider token splits, 5-agent metrics, mode/model distribution, and CSV export cleanly', () => {
-  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
-  assert.match(html, /id="workspace-view-switcher"/);
-  assert.match(html, /id="view-tab-office"/);
-  assert.match(html, /id="view-tab-analytics"/);
-  assert.match(html, /id="analytics-dashboard-view"/);
-  assert.match(html, /id="export-analytics-csv-btn"/);
-  assert.match(html, /id="analytics-audit-tbody"/);
+  const analyticsUiSrc = readProjectFiles([
+    'src/components/ViewSwitcher.tsx',
+    'src/components/AnalyticsDashboard.tsx',
+  ]);
+  assert.match(analyticsUiSrc, /id="workspace-view-switcher"/);
+  assert.match(analyticsUiSrc, /id="view-tab-office"/);
+  assert.match(analyticsUiSrc, /id="view-tab-analytics"/);
+  assert.match(analyticsUiSrc, /id="analytics-dashboard-view"/);
+  assert.match(analyticsUiSrc, /id="export-analytics-csv-btn"/);
+  assert.match(analyticsUiSrc, /id="analytics-audit-tbody"/);
 
   assert.equal(ANALYTICS_MAX_RUNS, 50);
 
@@ -1354,18 +1407,40 @@ test('17. Security, Bundle Optimization, and Typed Src Module Extraction', () =>
   assert.equal(directClean, '<p>OK</p>');
 
   const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const canvasSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/Office3DCanvas.tsx'), 'utf8');
+  const mdRendererSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/utils/markdownRenderer.ts'), 'utf8');
   assert.doesNotMatch(html, /cdn\.tailwindcss\.com/, 'Tailwind CDN script must be removed');
   assert.doesNotMatch(html, /type="importmap"/, 'CDN importmap must be removed');
   assert.doesNotMatch(html, /cdn[^\s"']*dompurify/i, 'DOMPurify must not be loaded via CDN script');
+  assert.doesNotMatch(html, /<style>/i, 'Clean Vite index.html must not contain inline <style> block');
   assert.match(html, /href="\/src\/index\.css"/, 'index.html must load Tailwind v4 CSS via /src/index.css');
-  assert.match(html, /import \* as THREE from 'three';/, 'index.html must import Three.js from npm package');
-  assert.match(html, /import DOMPurify from 'dompurify';/, 'index.html must import DOMPurify from npm package');
-  assert.match(html, /DOMPurify\.sanitize\(/, 'renderMarkdownWithKaTeX must call DOMPurify.sanitize before innerHTML');
+  assert.match(html, /src="\/src\/main\.tsx"/, 'index.html must boot React app via /src/main.tsx');
+  assert.match(canvasSrc, /import \* as THREE from 'three';/, 'Office3DCanvas must import Three.js from npm package');
+  assert.match(mdRendererSrc, /import DOMPurify from 'dompurify';/, 'markdownRenderer must import DOMPurify from npm package');
+  assert.match(mdRendererSrc, /DOMPurify\.sanitize\(/, 'renderMarkdownWithKaTeX must call DOMPurify.sanitize before innerHTML');
 
-  // Verify the 3 extracted TS modules exist under src/
-  assert.ok(fs.existsSync(path.resolve(process.cwd(), 'src/core/workModes.ts')));
-  assert.ok(fs.existsSync(path.resolve(process.cwd(), 'src/core/analytics.ts')));
-  assert.ok(fs.existsSync(path.resolve(process.cwd(), 'src/services/openrouter.ts')));
+  // Verify the extracted TypeScript + React component modules exist under src/
+  for (const relPath of [
+    'src/App.tsx',
+    'src/main.tsx',
+    'src/types/office.ts',
+    'src/core/workModes.ts',
+    'src/core/analytics.ts',
+    'src/services/openrouter.ts',
+    'src/utils/soundEngine.ts',
+    'src/utils/markdownRenderer.ts',
+    'src/components/Office3DCanvas.tsx',
+    'src/components/ViewSwitcher.tsx',
+    'src/components/ControlPanel.tsx',
+    'src/components/AgentCard.tsx',
+    'src/components/HistoryPanel.tsx',
+    'src/components/ReportSections.tsx',
+    'src/components/ExpertCouncilSidebar.tsx',
+    'src/components/AnalyticsDashboard.tsx',
+    'src/components/PromptDock.tsx',
+  ]) {
+    assert.ok(fs.existsSync(path.resolve(process.cwd(), relPath)), `${relPath} must exist`);
+  }
 
   const pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8')) as {
     dependencies: Record<string, string>;

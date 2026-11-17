@@ -1,6 +1,6 @@
 {
-  "name": "Remix Remix Văn phòng AI 3D - Chuyên gia Kinh tế \u0026 Kinh doanh",
-  "description": "Ứng dụng văn phòng AI 3D góc nhìn Isometric với 4 chuyên gia kinh tế \u0026 kinh doanh phối hợp tuần tự qua Gemini 2.5 Flash.",
+  "name": "Văn phòng AI 3D - Hệ thống Chuyên gia Đa năng",
+  "description": "Ứng dụng React + TypeScript Văn phòng AI 3D góc nhìn Isometric (Three.js) vận hành mô hình Lai 3 nhịp (1 → 2 → 2) hỗ trợ 4 chế độ làm việc đa năng, Phòng CEO Phúc, Chế độ Quay, Thống kê Chi tiết và cơ chế cấu hình 1 OpenRouter API Key gốc + tối đa 4/5 API Key riêng cho từng bàn chuyên gia.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
