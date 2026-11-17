@@ -6,10 +6,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    build: {
-      rolldownOptions: {
-        external: ['three', /^three\/addons\//],
-      },
+    optimizeDeps: {
+      include: ['three', 'dompurify'],
     },
     plugins: [
       react(),

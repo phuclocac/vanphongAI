@@ -23,19 +23,7 @@
       rel="stylesheet"
     />
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
-              mono: ['"JetBrains Mono"', 'monospace'],
-            },
-          },
-        },
-      };
-    </script>
+    <link rel="stylesheet" href="/src/index.css" />
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link
@@ -53,15 +41,6 @@
       src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
       crossorigin="anonymous"
     ></script>
-
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-        }
-      }
-    </script>
 
     <style>
       :root {
@@ -1103,11 +1082,11 @@
     </footer>
 
     <script type="module">
-      const importFromMap = (spec) => import(/* @vite-ignore */ spec);
-      const THREE = await importFromMap('three');
-      const { OrbitControls } = await importFromMap('three/addons/controls/OrbitControls.js');
-      const { CSS2DRenderer, CSS2DObject } = await importFromMap('three/addons/renderers/CSS2DRenderer.js');
-      const { RoomEnvironment } = await importFromMap('three/addons/environments/RoomEnvironment.js');
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+      import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+      import DOMPurify from 'dompurify';
 
       /* =========================================================================
        * 1. AGENT DEFINITIONS & MULTI-AGENT PROMPT ARCHITECTURE
@@ -2542,7 +2521,18 @@ ${outputs.assistant || ''}
         });
       }
 
-      function renderMarkdownToHtml(mdText, markedLib = null) {
+      function sanitizeReportHtml(htmlStr, sanitizer = null) {
+        const activeSanitizer = sanitizer || (typeof DOMPurify !== 'undefined' ? DOMPurify : null);
+        if (activeSanitizer && typeof activeSanitizer.sanitize === 'function') {
+          return activeSanitizer.sanitize(String(htmlStr || ''), {
+            USE_PROFILES: { html: true },
+            ADD_ATTR: ['target', 'rel'],
+          });
+        }
+        return String(htmlStr || '');
+      }
+
+      function renderMarkdownToHtml(mdText, markedLib = null, sanitizer = null) {
         const normalized = normalizeMarkdownTables(mdText);
         const { markdown, tokens } = protectMathInMarkdown(normalized);
         let rawHtml = '';
@@ -2566,7 +2556,8 @@ ${outputs.assistant || ''}
         });
 
         rawHtml = wrapHtmlTables(rawHtml);
-        return restoreMathInHtml(rawHtml, tokens);
+        const restoredHtml = restoreMathInHtml(rawHtml, tokens);
+        return sanitizeReportHtml(restoredHtml, sanitizer);
       }
 
       function parseApiErrorBody(errorBodyText) {
@@ -7168,7 +7159,11 @@ ${outputs.assistant || ''}
 
       function renderMarkdownWithKaTeX(targetEl, mdText) {
         if (!targetEl) return;
-        targetEl.innerHTML = renderMarkdownToHtml(mdText, window.marked || null);
+        const safeHtml = renderMarkdownToHtml(mdText, window.marked || null, DOMPurify);
+        targetEl.innerHTML = DOMPurify.sanitize(safeHtml, {
+          USE_PROFILES: { html: true },
+          ADD_ATTR: ['target', 'rel'],
+        });
         if (typeof window.renderMathInElement === 'function') {
           try {
             window.renderMathInElement(targetEl, {
@@ -7833,7 +7828,9 @@ ${outputs.assistant || ''}
             execProse.innerHTML =
               '<p class="text-xs text-amber-200/85">Đang đọc báo cáo của 4 bàn, đối chiếu mâu thuẫn và chắt lọc khuyến nghị cho CEO Phúc...</p>';
           } else if (assistantStatus === 'error') {
-            execProse.innerHTML = `<p class="text-xs text-red-300">${appState.errors.assistant || 'Không thể tổng hợp Báo cáo Điều hành.'}</p>`;
+            execProse.innerHTML = DOMPurify.sanitize(
+              `<p class="text-xs text-red-300">${escapeHtmlText(appState.errors.assistant || 'Không thể tổng hợp Báo cáo Điều hành.')}</p>`
+            );
           }
           dom.reportSections.appendChild(execCard);
 
@@ -7938,7 +7935,9 @@ ${outputs.assistant || ''}
             if (content) {
               renderMarkdownWithKaTeX(proseDiv, content);
             } else if (status === 'error') {
-              proseDiv.innerHTML = `<p class="text-xs text-red-300">${appState.errors[agent.id] || 'Bàn này gặp lỗi API.'}</p>`;
+              proseDiv.innerHTML = DOMPurify.sanitize(
+                `<p class="text-xs text-red-300">${escapeHtmlText(appState.errors[agent.id] || 'Bàn này gặp lỗi API.')}</p>`
+              );
             }
 
             bodyWrap.appendChild(proseDiv);

@@ -22,7 +22,7 @@ function loadPureFunctionsFromIndexHtml(mockFetch?: typeof fetch) {
     AbortController: globalThis.AbortController,
   };
   vm.runInNewContext(
-    `${slice}\nthis.__exported = { WORK_MODES, DEFAULT_WORK_MODE, AGENTS, HALL_AGENTS, ASSISTANT_AGENT, SUGGESTED_MODELS, DEFAULT_AGENT_MODELS, RETRY_CONFIG, SOUND_PRESETS, ANALYTICS_MAX_RUNS, normalizeWorkMode, getModeMeta, getAgentRoleForMode, getDefaultSystemPrompt, isGeminiDirectModel, getModelProvider, loadSavedAgentModels, loadSavedAgentApiKeys, resolveAgentApiKey, resolveAgentKeyPlan, loadSavedSystemPrompts, resolveAgentSystemPrompt, extractOpenRouterUsageTokens, extractOpenRouterActualModel, formatTokenCount, normalizeMemoryBullets, parseAssistantMemoryExtraction, extractCoreSummary, formatContextForBeat3, loadSessionHistory, upsertSessionHistory, normalizeAnalyticsRunRecord, loadAnalyticsRuns, upsertAnalyticsRun, mergeAnalyticsSources, computeAnalyticsDashboardMetrics, buildAnalyticsCsv, buildFullReportMarkdown, buildAgentPrompt, buildAssistantFollowupPrompt, buildMemoryExtractionPrompt, protectMathInMarkdown, restoreMathInHtml, normalizeMarkdownTables, renderFallbackMarkdownToHtml, renderMarkdownToHtml, buildExactApiErrorInfo, classifyOpenRouterError, extractOpenRouterContent, callOpenRouterAgent, callOpenRouterWithKeyFallback, callAgentModel, runHybrid3BeatSequence, getSoundPreset, getPipelineProgressPercent, getAgentProgressState, getNeuralTickerMessage, resolveBeamLinkState, resolveJanitorTargetPlan };`,
+    `${slice}\nthis.__exported = { WORK_MODES, DEFAULT_WORK_MODE, AGENTS, HALL_AGENTS, ASSISTANT_AGENT, SUGGESTED_MODELS, DEFAULT_AGENT_MODELS, RETRY_CONFIG, SOUND_PRESETS, ANALYTICS_MAX_RUNS, normalizeWorkMode, getModeMeta, getAgentRoleForMode, getDefaultSystemPrompt, isGeminiDirectModel, getModelProvider, loadSavedAgentModels, loadSavedAgentApiKeys, resolveAgentApiKey, resolveAgentKeyPlan, loadSavedSystemPrompts, resolveAgentSystemPrompt, extractOpenRouterUsageTokens, extractOpenRouterActualModel, formatTokenCount, normalizeMemoryBullets, parseAssistantMemoryExtraction, extractCoreSummary, formatContextForBeat3, loadSessionHistory, upsertSessionHistory, normalizeAnalyticsRunRecord, loadAnalyticsRuns, upsertAnalyticsRun, mergeAnalyticsSources, computeAnalyticsDashboardMetrics, buildAnalyticsCsv, buildFullReportMarkdown, buildAgentPrompt, buildAssistantFollowupPrompt, buildMemoryExtractionPrompt, protectMathInMarkdown, restoreMathInHtml, normalizeMarkdownTables, renderFallbackMarkdownToHtml, sanitizeReportHtml, renderMarkdownToHtml, buildExactApiErrorInfo, classifyOpenRouterError, extractOpenRouterContent, callOpenRouterAgent, callOpenRouterWithKeyFallback, callAgentModel, runHybrid3BeatSequence, getSoundPreset, getPipelineProgressPercent, getAgentProgressState, getNeuralTickerMessage, resolveBeamLinkState, resolveJanitorTargetPlan };`,
     sandbox
   );
 
@@ -120,7 +120,15 @@ function loadPureFunctionsFromIndexHtml(mockFetch?: typeof fetch) {
     restoreMathInHtml: (html: string, tokens: string[]) => string;
     normalizeMarkdownTables: (mdText: string) => string;
     renderFallbackMarkdownToHtml: (markdown: string) => string;
-    renderMarkdownToHtml: (mdText: string, markedLib?: { parse: (md: string, opts?: Record<string, unknown>) => string } | null) => string;
+    sanitizeReportHtml: (
+      htmlStr: string,
+      sanitizer?: { sanitize: (dirty: string, cfg?: Record<string, unknown>) => string } | null
+    ) => string;
+    renderMarkdownToHtml: (
+      mdText: string,
+      markedLib?: { parse: (md: string, opts?: Record<string, unknown>) => string } | null,
+      sanitizer?: { sanitize: (dirty: string, cfg?: Record<string, unknown>) => string } | null
+    ) => string;
     buildExactApiErrorInfo: (
       provider: string,
       status: number,
@@ -1504,10 +1512,49 @@ test('3-stage silent auto-retry (502/empty + reasoning fallback), Mode-Adaptive 
   assert.doesNotMatch(renderedViaHtml, /\| --- \|/);
 });
 
+test('17. Security & Bundle Optimization: DOMPurify sanitization, Vite Tailwind CSS, and pinned npm Three.js', () => {
+  const { renderMarkdownToHtml, sanitizeReportHtml } = loadPureFunctionsFromIndexHtml();
 
+  let sanitizedInput = '';
+  let sanitizeConfig: Record<string, unknown> | undefined;
+  const mockPurifier = {
+    sanitize(dirty: string, cfg?: Record<string, unknown>) {
+      sanitizedInput = dirty;
+      sanitizeConfig = cfg;
+      return dirty.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+="[^"]*"/gi, '');
+    },
+  };
 
+  const dirtyMarkedLib = {
+    parse(md: string) {
+      return `<h3>Báo cáo</h3><script>window.__xss=1</script><img src="x" onerror="alert(1)"><p>${md}</p>`;
+    },
+  };
 
+  const output = renderMarkdownToHtml('Nội dung **an toàn**', dirtyMarkedLib, mockPurifier);
+  assert.match(sanitizedInput, /<script>window\.__xss=1<\/script>/);
+  assert.deepEqual(JSON.parse(JSON.stringify(sanitizeConfig)), { USE_PROFILES: { html: true }, ADD_ATTR: ['target', 'rel'] });
+  assert.doesNotMatch(output, /<script/i);
+  assert.doesNotMatch(output, /onerror=/i);
+  assert.match(output, /<h3>Báo cáo<\/h3>/);
 
+  const directClean = sanitizeReportHtml('<p>OK</p><script>bad()</script>', mockPurifier);
+  assert.equal(directClean, '<p>OK</p>');
 
+  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  assert.doesNotMatch(html, /cdn\.tailwindcss\.com/, 'Tailwind CDN script must be removed');
+  assert.doesNotMatch(html, /type="importmap"/, 'CDN importmap must be removed');
+  assert.doesNotMatch(html, /cdn[^\s"']*dompurify/i, 'DOMPurify must not be loaded via CDN script');
+  assert.match(html, /href="\/src\/index\.css"/, 'index.html must load Tailwind v4 CSS via /src/index.css');
+  assert.match(html, /import \* as THREE from 'three';/, 'index.html must import Three.js from npm package');
+  assert.match(html, /import DOMPurify from 'dompurify';/, 'index.html must import DOMPurify from npm package');
+  assert.match(html, /DOMPurify\.sanitize\(/, 'renderMarkdownWithKaTeX must call DOMPurify.sanitize before innerHTML');
 
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'));
+  assert.equal(pkg.dependencies.three, '0.170.0', 'three must be pinned to fixed version 0.170.0 in dependencies');
+  assert.ok(pkg.dependencies.dompurify, 'dompurify must be installed in dependencies');
+  assert.ok(pkg.dependencies['@types/dompurify'] || pkg.devDependencies?.['@types/dompurify'], '@types/dompurify must be installed');
 
+  const viteCfg = fs.readFileSync(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+  assert.doesNotMatch(viteCfg, /external:\s*\[['"]three['"]/, 'vite.config.ts must bundle three instead of externalizing it');
+});
