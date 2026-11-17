@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import {
   AGENTS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   HALL_AGENTS,
   getAgentRoleForMode,
   type AgentId,
@@ -32,6 +33,7 @@ interface ReportSectionsProps {
   actualModels: Record<AgentId, string>;
   usedModels: Record<AgentId, string>;
   agentModels: Record<AgentId, string>;
+  fallbackNotices?: Partial<Record<AgentId, string>>;
   tokenCounts: Record<AgentId, number>;
   errors: Record<AgentId, string>;
   errorTypes: Record<AgentId, ErrorType>;
@@ -54,6 +56,7 @@ export function ReportSections({
   actualModels,
   usedModels,
   agentModels,
+  fallbackNotices = {},
   tokenCounts,
   errors,
   errorTypes,
@@ -70,12 +73,14 @@ export function ReportSections({
 }: ReportSectionsProps) {
   const [manualOpenMap, setManualOpenMap] = useState<Partial<Record<AgentId, boolean>>>({});
 
+  const timeoutSec = Math.max(1, Math.round(DEFAULT_REQUEST_TIMEOUT_MS / 1000));
   const hasAnyOutput = AGENTS.some((a) => Boolean(outputs[a.id]));
   const assistantStatus = statuses.assistant;
   const showEmpty = !hasAnyOutput && assistantStatus !== 'active' && assistantStatus !== 'error';
 
   const execOutput = outputs.assistant;
   const assistantRole = getAgentRoleForMode(mode, 'assistant');
+  const execFallbackNotice = (fallbackNotices.assistant || '').trim();
   const execModel = actualModels.assistant || usedModels.assistant || agentModels.assistant || '';
   const execTokens = Number(tokenCounts.assistant) || 0;
 
@@ -155,10 +160,10 @@ export function ReportSections({
                       Báo cáo Điều hành — {assistantRole.name}
                     </h3>
                     <p className="text-[11px] text-slate-300 truncate">{assistantRole.titleVi}</p>
-                    {(execModel || execTokens > 0) && (
+                    {(execModel || execFallbackNotice || execTokens > 0) && (
                       <p className="text-[10px] font-mono tabular-nums text-amber-300/85 truncate mt-0.5">
-                        {execModel}
-                        {execModel && execTokens > 0 ? ' · ' : ''}
+                        {execFallbackNotice ? execFallbackNotice : execModel}
+                        {(execFallbackNotice || execModel) && execTokens > 0 ? ' · ' : ''}
                         {execTokens > 0 ? formatTokenCount(execTokens) : ''}
                       </p>
                     )}
@@ -195,7 +200,17 @@ export function ReportSections({
               </header>
 
               {execOutput ? (
-                <MarkdownProse markdown={execOutput} />
+                <>
+                  {execFallbackNotice && (
+                    <div
+                      data-report-fallback-banner="assistant"
+                      className="rounded-lg border border-amber-400/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-200"
+                    >
+                      Tạo bởi <strong>{execFallbackNotice}</strong>
+                    </div>
+                  )}
+                  <MarkdownProse markdown={execOutput} />
+                </>
               ) : assistantStatus === 'active' ? (
                 <div className="prose-report">
                   <p className="text-xs text-amber-200/85">
@@ -254,6 +269,7 @@ export function ReportSections({
               const status = statuses[agent.id];
               const modelLabel =
                 actualModels[agent.id] || usedModels[agent.id] || agentModels[agent.id] || '';
+              const agentFallbackNotice = (fallbackNotices[agent.id] || '').trim();
               const agentTokens = Number(tokenCounts[agent.id]) || 0;
               const isOpen =
                 manualOpenMap[agent.id] !== undefined
@@ -296,10 +312,14 @@ export function ReportSections({
                           {agent.step}. {role.name}{' '}
                           <span className="font-normal text-slate-400">· {role.titleVi}</span>
                         </div>
-                        {(modelLabel || agentTokens > 0) && (
-                          <div className="text-[10px] font-mono tabular-nums text-blue-300/90 truncate">
-                            {modelLabel}
-                            {modelLabel && agentTokens > 0 ? ' · ' : ''}
+                        {(modelLabel || agentFallbackNotice || agentTokens > 0) && (
+                          <div
+                            className={`text-[10px] font-mono tabular-nums truncate ${
+                              agentFallbackNotice ? 'text-amber-300' : 'text-blue-300/90'
+                            }`}
+                          >
+                            {agentFallbackNotice ? agentFallbackNotice : modelLabel}
+                            {(agentFallbackNotice || modelLabel) && agentTokens > 0 ? ' · ' : ''}
                             {agentTokens > 0 ? formatTokenCount(agentTokens) : ''}
                           </div>
                         )}
@@ -312,7 +332,7 @@ export function ReportSections({
                     >
                       {status === 'error' ? (
                         errorLabels[agent.id] ||
-                        (errorTypes[agent.id] === 'timeout' ? 'Lỗi Timeout >35s' : 'Lỗi API')
+                        (errorTypes[agent.id] === 'timeout' ? `Lỗi Timeout >${timeoutSec}s` : 'Lỗi API')
                       ) : (
                         <>
                           <svg
@@ -332,7 +352,15 @@ export function ReportSections({
                     </span>
                   </summary>
 
-                  <div className="px-3.5 pb-3.5 pt-2 border-t border-white/10">
+                  <div className="px-3.5 pb-3.5 pt-2 border-t border-white/10 space-y-2">
+                    {agentFallbackNotice && content && (
+                      <div
+                        data-report-fallback-banner={agent.id}
+                        className="rounded-lg border border-amber-400/35 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200"
+                      >
+                        Tạo bởi <strong>{agentFallbackNotice}</strong>
+                      </div>
+                    )}
                     {content ? (
                       <MarkdownProse markdown={content} />
                     ) : (

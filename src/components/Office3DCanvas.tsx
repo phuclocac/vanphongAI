@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import {
   AGENTS,
   ASSISTANT_AGENT,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   HALL_AGENTS,
   getAgentProgressState,
   getAgentRoleForMode,
@@ -2510,9 +2511,10 @@ export function Office3DCanvas({
         const status = s.statuses[agent.id];
         const errorType = (s.errorTypes && s.errorTypes[agent.id]) || '';
         const errorLabel = (s.errorLabels && s.errorLabels[agent.id]) || '';
+        const timeoutSec = Math.max(1, Math.round(DEFAULT_REQUEST_TIMEOUT_MS / 1000));
         const shortBadgeErr =
           errorType === 'timeout'
-            ? 'Timeout >35s'
+            ? `Timeout >${timeoutSec}s`
             : errorLabel
               ? errorLabel.split(':')[0]
               : 'Lỗi API';

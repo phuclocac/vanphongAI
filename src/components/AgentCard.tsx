@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import {
   DEFAULT_AGENT_MODELS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   SUGGESTED_MODELS,
   getAgentRoleForMode,
   getDefaultSystemPrompt,
@@ -23,6 +24,7 @@ interface AgentCardProps {
   errorLabel: string;
   errorFull: string;
   actualModel: string;
+  fallbackNotice?: string;
   tokenCount: number;
   hasOutput: boolean;
   selectedModel: string;
@@ -55,6 +57,7 @@ export function AgentCard({
   errorLabel,
   errorFull,
   actualModel,
+  fallbackNotice = '',
   tokenCount,
   hasOutput,
   selectedModel,
@@ -85,18 +88,20 @@ export function AgentCard({
   const defaultSysPrompt = getDefaultSystemPrompt(mode, agent.id);
   const isCustomizedPrompt = resolvedSysPrompt !== defaultSysPrompt;
 
+  const timeoutSec = Math.max(1, Math.round(DEFAULT_REQUEST_TIMEOUT_MS / 1000));
   const shortBadgeErr =
-    errorType === 'timeout' ? 'Timeout >35s' : errorLabel ? errorLabel.split(':')[0] : 'Lỗi API';
+    errorType === 'timeout' ? `Timeout >${timeoutSec}s` : errorLabel ? errorLabel.split(':')[0] : 'Lỗi API';
   const detailedCardErr =
     errorLabel ||
     (errorType === 'timeout'
-      ? 'Lỗi Timeout >35s'
+      ? `Lỗi Timeout >${timeoutSec}s`
       : errorType === 'network'
         ? 'Lỗi mạng: Không thể kết nối'
         : 'Lỗi API không xác định');
 
   const trimmedActual = actualModel.trim();
-  const showActualModel = Boolean(trimmedActual) && (status === 'done' || hasOutput);
+  const trimmedFallback = fallbackNotice.trim();
+  const showActualModel = Boolean(trimmedActual || trimmedFallback) && (status === 'done' || hasOutput);
   const lockInputs = isPipelineRunning || isFollowupRunning || isAgentRunning;
 
   const cardClass = isAssistant
@@ -261,12 +266,23 @@ export function AgentCard({
         >
           <span
             data-agent-actual-model
-            title={showActualModel ? `Model thực tế: ${trimmedActual}` : undefined}
+            data-agent-fallback-notice={trimmedFallback ? 'true' : undefined}
+            title={
+              trimmedFallback
+                ? trimmedFallback
+                : showActualModel
+                  ? `Model thực tế: ${trimmedActual}`
+                  : undefined
+            }
             className={`${
               showActualModel ? '' : 'hidden'
-            } truncate max-w-[116px] text-[9.5px] font-mono text-emerald-300/95 bg-emerald-500/10 border border-emerald-500/25 rounded px-1.5 py-0.5`}
+            } ${
+              trimmedFallback
+                ? 'truncate max-w-[148px] text-[9.5px] font-mono text-amber-200 bg-amber-500/15 border border-amber-400/45 rounded px-1.5 py-0.5'
+                : 'truncate max-w-[116px] text-[9.5px] font-mono text-emerald-300/95 bg-emerald-500/10 border border-emerald-500/25 rounded px-1.5 py-0.5'
+            }`}
           >
-            {showActualModel ? trimmedActual : ''}
+            {showActualModel ? (trimmedFallback || trimmedActual) : ''}
           </span>
           <span
             data-agent-tokens

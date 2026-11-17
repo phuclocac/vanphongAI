@@ -2,6 +2,7 @@ import {
   AGENTS,
   ASSISTANT_AGENT,
   DEFAULT_FREE_MODEL,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   HALL_AGENTS,
   OPENROUTER_API_URL,
   RETRY_CONFIG,
@@ -62,6 +63,26 @@ export interface OpenRouterKeyFallbackResult extends OpenRouterCallResult {
   usedModelFallback: boolean;
   fallbackFromStatus?: number;
   rescueModel?: string;
+  fallbackReason?: string;
+  fallbackFromModel?: string;
+}
+
+export function formatFallbackModelNotice({
+  usedModelFallback,
+  rescueModel = DEFAULT_FREE_MODEL,
+  fallbackReason = '',
+  fallbackFromModel = '',
+}: {
+  usedModelFallback?: boolean;
+  rescueModel?: string;
+  fallbackReason?: string;
+  fallbackFromModel?: string;
+}): string {
+  if (!usedModelFallback) return '';
+  const targetModel = (rescueModel || DEFAULT_FREE_MODEL).trim() || DEFAULT_FREE_MODEL;
+  const reasonPart = fallbackReason ? ` (${fallbackReason})` : '';
+  const originPart = fallbackFromModel ? ` · thay cho ${fallbackFromModel}` : '';
+  return `Model dự phòng ${targetModel}${reasonPart}${originPart}`;
 }
 
 export interface OpenRouterCallOptions {
@@ -194,6 +215,7 @@ export function buildFullReportMarkdown({
   actualModels = {},
   usedModels = {},
   tokenCounts = {},
+  fallbackNotices = {},
 }: {
   mode: string;
   topic: string;
@@ -201,6 +223,7 @@ export function buildFullReportMarkdown({
   actualModels?: Partial<Record<AgentId, string>>;
   usedModels?: Partial<Record<AgentId, string>>;
   tokenCounts?: Partial<Record<AgentId, number>>;
+  fallbackNotices?: Partial<Record<AgentId, string>>;
 }): string {
   const modeTitle = getModeMeta(mode).label;
   const totalTokens = AGENTS.reduce((acc, a) => acc + (Number(tokenCounts[a.id]) || 0), 0);
@@ -215,10 +238,11 @@ export function buildFullReportMarkdown({
   if (outputs.assistant) {
     const role5 = getAgentRoleForMode(mode, 'assistant');
     const modelLabel = actualModels.assistant || usedModels.assistant || '';
+    const fbLabel = fallbackNotices.assistant ? ` (${fallbackNotices.assistant})` : '';
     const tCount = Number(tokenCounts.assistant) || 0;
     parts.push(`---`);
     parts.push(
-      `## BÁO CÁO ĐIỀU HÀNH (EXECUTIVE SUMMARY) — ${role5.name}${modelLabel ? ` — Model: ${modelLabel}` : ''}${tCount > 0 ? ` · ${formatTokenCount(tCount)}` : ''}`
+      `## BÁO CÁO ĐIỀU HÀNH (EXECUTIVE SUMMARY) — ${role5.name}${modelLabel ? ` — Model: ${modelLabel}` : ''}${fbLabel}${tCount > 0 ? ` · ${formatTokenCount(tCount)}` : ''}`
     );
     parts.push(outputs.assistant);
     parts.push('');
@@ -228,10 +252,11 @@ export function buildFullReportMarkdown({
     if (outputs[agent.id]) {
       const role = getAgentRoleForMode(mode, agent.id);
       const modelLabel = actualModels[agent.id] || usedModels[agent.id] || '';
+      const fbLabel = fallbackNotices[agent.id] ? ` (${fallbackNotices[agent.id]})` : '';
       const tCount = Number(tokenCounts[agent.id]) || 0;
       parts.push(`---`);
       parts.push(
-        `## ${agent.step}. ${role.name} (${role.titleVi})${modelLabel ? ` — Model: ${modelLabel}` : ''}${tCount > 0 ? ` · ${formatTokenCount(tCount)}` : ''}`
+        `## ${agent.step}. ${role.name} (${role.titleVi})${modelLabel ? ` — Model: ${modelLabel}` : ''}${fbLabel}${tCount > 0 ? ` · ${formatTokenCount(tCount)}` : ''}`
       );
       parts.push(outputs[agent.id]!);
       parts.push('');
@@ -519,7 +544,17 @@ export function restoreMathInHtml(html: string, tokens: string[]): string {
   if (!tokens || tokens.length === 0) return String(html || '');
   return String(html || '').replace(/@@MATH_TOKEN_(\d+)@@/g, (_, idx) => {
     const raw = tokens[Number(idx)] ?? '';
-    return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let restored = raw;
+    if (
+      raw.length >= 3 &&
+      raw.startsWith('$') &&
+      raw.endsWith('$') &&
+      !raw.startsWith('$$') &&
+      !raw.endsWith('$$')
+    ) {
+      restored = `\\(${raw.slice(1, -1)}\\)`;
+    }
+    return restored.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   });
 }
 
@@ -816,16 +851,21 @@ export function buildExactApiErrorInfo(
   status: number,
   errorBodyText: string,
   rawError: TaggedApiError | Error | null,
-  modelId = ''
+  modelId = '',
+  timeoutMs = RETRY_CONFIG.requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS
 ): ApiErrorInfo {
   if ((rawError as TaggedApiError | null)?.isTimeout) {
+    const timeoutSec = Math.max(
+      1,
+      Math.round((Number(timeoutMs) || DEFAULT_REQUEST_TIMEOUT_MS) / 1000)
+    );
     return {
       status: 408,
       errorType: 'timeout',
-      shortLabel: 'Lỗi Timeout >35s',
+      shortLabel: `Lỗi Timeout >${timeoutSec}s`,
       message:
         rawError?.message ||
-        `Lỗi Timeout >35s khi gọi model "${modelId || 'hiện tại'}". Bạn có thể bấm "Chạy lại" riêng nhân viên này.`,
+        `Lỗi Timeout >${timeoutSec}s khi gọi model "${modelId || 'hiện tại'}". Bạn có thể bấm "Chạy lại" riêng nhân viên này.`,
     };
   }
 
@@ -995,7 +1035,9 @@ export async function callOpenRouterAgent(
   const retryDelayMs =
     typeof options.retryDelayMs === 'number' ? options.retryDelayMs : RETRY_CONFIG.retryDelayMs;
   const timeoutMs =
-    typeof options.timeoutMs === 'number' ? options.timeoutMs : RETRY_CONFIG.requestTimeoutMs;
+    typeof options.timeoutMs === 'number'
+      ? options.timeoutMs
+      : RETRY_CONFIG.requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS;
   const maxTokens =
     typeof options.maxTokens === 'number' && options.maxTokens > 0
       ? options.maxTokens
@@ -1069,12 +1111,13 @@ export async function callOpenRouterAgent(
       rawBody = await response.text();
     } catch (err) {
       if (timedOut && !signal?.aborted) {
+        const timeoutSec = Math.max(1, Math.round(timeoutMs / 1000));
         const timeoutErr: TaggedApiError = new Error(
-          `Lỗi Timeout >${Math.round(timeoutMs / 1000)}s khi gọi model "${activeModel}". Bạn có thể bấm "Chạy lại" riêng nhân viên này.`
+          `Lỗi Timeout >${timeoutSec}s khi gọi model "${activeModel}". Bạn có thể bấm "Chạy lại" riêng nhân viên này.`
         );
         timeoutErr.name = 'TimeoutError';
         timeoutErr.isTimeout = true;
-        timeoutErr.shortLabel = 'Lỗi Timeout >35s';
+        timeoutErr.shortLabel = `Lỗi Timeout >${timeoutSec}s`;
         timeoutErr.errorType = 'timeout';
         throw timeoutErr;
       }
@@ -1245,12 +1288,23 @@ export async function callOpenRouterWithKeyFallback({
     return autoRouter || DEFAULT_FREE_MODEL;
   };
 
+  const switchedToGlobal = Boolean(cleanFallback) && cleanFallback !== cleanPrimary;
+
   const isSilentRescuableError = (err: TaggedApiError): boolean => {
     if (err?.name === 'AbortError' && !err?.isTimeout) return false;
     const st = Number(err?.status) || 0;
+    if ((st === 401 || st === 403) && !switchedToGlobal) return false;
     if (RETRY_CONFIG.keyFallbackStatuses.includes(st)) return true;
     if (err?.isEmptyContent || err?.isNetworkError || err?.isTimeout) return true;
     return false;
+  };
+
+  const buildFallbackReason = (err: TaggedApiError | null, status: number): string => {
+    if (status > 0) return `Lỗi ${status}`;
+    if (err?.isTimeout) return 'Timeout';
+    if (err?.isEmptyContent) return 'Phản hồi rỗng';
+    if (err?.isNetworkError) return 'Lỗi mạng';
+    return 'Lỗi API';
   };
 
   // Lần 1: Gọi bằng API Key ưu tiên (Key riêng nếu có, hoặc Key gốc) & Model đã chọn
@@ -1261,6 +1315,9 @@ export async function callOpenRouterWithKeyFallback({
     const err1 = err1Raw as TaggedApiError;
     if (err1?.name === 'AbortError' && !err1?.isTimeout) throw err1;
     const err1Status = Number(err1?.status) || 0;
+    if ((err1Status === 401 || err1Status === 403) && !switchedToGlobal) {
+      throw err1;
+    }
     const isModel404 = err1Status === 404;
     const isModel400 = err1Status === 400 && Boolean(options.rescueOnModelError);
     const shouldAttempt2 = !isModel404 && !isModel400 && isSilentRescuableError(err1);
@@ -1269,7 +1326,6 @@ export async function callOpenRouterWithKeyFallback({
       throw err1;
     }
 
-    const switchedToGlobal = Boolean(cleanFallback) && cleanFallback !== cleanPrimary;
     const finalRescueModel = resolveFinalRescueModel();
 
     // Lần 2: Chờ 3s, chuyển sang Key gốc ở cột trái và giữ nguyên Model (trừ lỗi 404/400 bỏ qua sang bước đổi model)
@@ -1304,14 +1360,18 @@ export async function callOpenRouterWithKeyFallback({
         const err2 = err2Raw as TaggedApiError;
         if (err2?.name === 'AbortError' && !err2?.isTimeout) throw err2;
         const err2Status = Number(err2?.status) || 0;
+        if (err2Status === 401 || err2Status === 403) {
+          throw err2;
+        }
 
+        const reasonStr = buildFallbackReason(err2, err2Status);
         // Lần 3: Chờ 3s, dùng Key gốc và bắt buộc chuyển sang model dự phòng cuối cùng 'openrouter/free'
         options?.onSilentRetry?.(3, 3, {
           status: err2Status || (err2?.isEmptyContent ? 'empty' : err2?.isTimeout ? 'timeout' : 'network'),
           switchedKey: switchedToGlobal,
           rescueModel: finalRescueModel,
         });
-        options?.onFallback?.(finalRescueModel, String(err2Status || 'rescue'));
+        options?.onFallback?.(finalRescueModel, reasonStr);
         if (waitMs > 0) {
           await abortableSleep(waitMs, signal);
         }
@@ -1329,17 +1389,20 @@ export async function callOpenRouterWithKeyFallback({
           usedModelFallback: cleanModel !== finalRescueModel,
           fallbackFromStatus: err2Status || err1Status,
           rescueModel: finalRescueModel,
+          fallbackReason: reasonStr,
+          fallbackFromModel: cleanModel,
         };
       }
     }
 
     // Lỗi HTTP 404 (hoặc 400 với rescueOnModelError): Cứu hộ trực tiếp bằng model dự phòng cuối cùng 'openrouter/free' và Key gốc
+    const rescueReason = buildFallbackReason(err1, err1Status);
     options?.onSilentRetry?.(3, 3, {
       status: err1Status,
       switchedKey: switchedToGlobal,
       rescueModel: finalRescueModel,
     });
-    options?.onFallback?.(finalRescueModel, String(err1Status));
+    options?.onFallback?.(finalRescueModel, rescueReason);
     if (waitMs > 0) {
       await abortableSleep(waitMs, signal);
     }
@@ -1357,6 +1420,8 @@ export async function callOpenRouterWithKeyFallback({
       usedModelFallback: cleanModel !== finalRescueModel,
       fallbackFromStatus: err1Status,
       rescueModel: finalRescueModel,
+      fallbackReason: rescueReason,
+      fallbackFromModel: cleanModel,
     };
   }
 }

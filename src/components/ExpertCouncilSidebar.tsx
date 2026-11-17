@@ -25,6 +25,7 @@ interface ExpertCouncilSidebarProps {
   outputs: Record<AgentId, string>;
   actualModels: Record<AgentId, string>;
   usedModels: Record<AgentId, string>;
+  fallbackNotices?: Partial<Record<AgentId, string>>;
   agentModels: Record<AgentId, string>;
   agentApiKeys: Record<AgentId, string>;
   agentSystemPrompts: SavedSystemPromptsMap;
@@ -73,6 +74,7 @@ export function ExpertCouncilSidebar({
   outputs,
   actualModels,
   usedModels,
+  fallbackNotices = {},
   agentModels,
   agentApiKeys,
   agentSystemPrompts,
@@ -322,6 +324,7 @@ export function ExpertCouncilSidebar({
                   errorLabel={errorLabels[agent.id]}
                   errorFull={errors[agent.id]}
                   actualModel={actualModels[agent.id]}
+                  fallbackNotice={fallbackNotices[agent.id] || ''}
                   tokenCount={tokenCounts[agent.id]}
                   hasOutput={Boolean(outputs[agent.id])}
                   selectedModel={agentModels[agent.id]}
@@ -352,6 +355,7 @@ export function ExpertCouncilSidebar({
               actualModels={actualModels}
               usedModels={usedModels}
               agentModels={agentModels}
+              fallbackNotices={fallbackNotices}
               tokenCounts={tokenCounts}
               errors={errors}
               errorTypes={errorTypes}

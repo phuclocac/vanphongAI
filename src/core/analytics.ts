@@ -21,6 +21,7 @@ export interface SessionHistoryEntry {
   outputs?: Partial<Record<AgentId, string>>;
   actualModels?: Partial<Record<AgentId, string>>;
   usedModels?: Partial<Record<AgentId, string>>;
+  fallbackNotices?: Partial<Record<AgentId, string>>;
   tokenCounts?: Partial<Record<AgentId, number>>;
   [key: string]: unknown;
 }

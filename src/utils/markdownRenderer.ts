@@ -40,9 +40,8 @@ export function renderMarkdownWithKaTeX(targetEl: HTMLElement | null, mdText: st
       window.renderMathInElement(targetEl, {
         delimiters: [
           { left: '$$', right: '$$', display: true },
-          { left: '$', right: '$', display: false },
-          { left: '\\(', right: '\\)', display: false },
           { left: '\\[', right: '\\]', display: true },
+          { left: '\\(', right: '\\)', display: false },
         ],
         throwOnError: false,
       });

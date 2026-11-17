@@ -12,6 +12,7 @@ import {
   OPENROUTER_API_URL,
   SUGGESTED_MODELS,
   DEFAULT_AGENT_MODELS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   DEPRECATED_FREE_MODELS,
   RETRY_CONFIG,
   STORAGE_KEYS,
@@ -64,6 +65,7 @@ import {
   extractOpenRouterContent,
   callOpenRouterAgent,
   callOpenRouterWithKeyFallback,
+  formatFallbackModelNotice,
   runHybrid3BeatSequence,
 } from '../src/services/openrouter';
 
@@ -244,9 +246,9 @@ test('runHybrid3BeatSequence enforces 1 -> 2 -> 2 order, 3s Beat 1 cooldown, 4s 
   assert.ok(!calledOnFailure.includes('assistant'));
 });
 
-test('protectMathInMarkdown and restoreMathInHtml preserve $I_0$, $COGS$, and $$...$$ safely', () => {
+test('protectMathInMarkdown and restoreMathInHtml convert inline $...$ to \\(...\\) while preserving currency & $$...$$ safely', () => {
   const md = [
-    'Công thức vốn $I_0$ và giá vốn $COGS_{avg}$ kèm tiền $500 triệu.',
+    'Công thức vốn $I_0$ và giá vốn $COGS_{avg}$ kèm tiền tăng từ $100 lên $120 và $500 triệu.',
     '$$ROI = \\frac{L_{ròng}}{I_0} \\times 100\\%$$',
     'Code mẫu: `$not_math$`',
   ].join('\n');
@@ -255,14 +257,18 @@ test('protectMathInMarkdown and restoreMathInHtml preserve $I_0$, $COGS$, and $$
   assert.equal(tokens.length, 3);
   assert.doesNotMatch(markdown, /\$I_0\$/);
   assert.doesNotMatch(markdown, /\$COGS_\{avg\}\$/);
+  assert.match(markdown, /tăng từ \$100 lên \$120/);
   assert.match(markdown, /\$500 triệu/);
   assert.match(markdown, /`\$not_math\$`/);
 
   const simulatedHtml = `<p>${markdown.replace(/\n/g, '</p><p>')}</p>`;
   const restored = restoreMathInHtml(simulatedHtml, tokens);
-  assert.match(restored, /\$I_0\$/);
-  assert.match(restored, /\$COGS_\{avg\}\$/);
+  assert.match(restored, /\\\(I_0\\\)/);
+  assert.match(restored, /\\\(COGS_\{avg\}\\\)/);
+  assert.doesNotMatch(restored, /\$I_0\$/);
+  assert.doesNotMatch(restored, /\$COGS_\{avg\}\$/);
   assert.match(restored, /\$\$ROI = \\frac\{L_\{ròng\}\}\{I_0\} \\times 100\\%\$\$/);
+  assert.match(restored, /tăng từ \$100 lên \$120/);
 });
 
 test('extractOpenRouterUsageTokens, formatTokenCount, and callOpenRouterAgent handle system prompts, 1 retry, and token counts', async () => {
@@ -719,7 +725,7 @@ test('getAgentProgressState tracks active circular progress rings cleanly and CE
   assert.equal(tRetry.stageLabel, 'Thử lại 1/3...');
 });
 
-test('35s timeout AbortController, openrouter/free auto-fallback, max_tokens=4096, concise prompts, sealed West wall, and collapsible HUD panel', async () => {
+test('60s timeout AbortController, openrouter/free auto-fallback, max_tokens=4096, concise prompts, sealed West wall, and collapsible HUD panel', async () => {
   const archSrc = readProjectFiles([
     'src/components/Office3DCanvas.tsx',
     'src/components/ControlPanel.tsx',
@@ -733,7 +739,8 @@ test('35s timeout AbortController, openrouter/free auto-fallback, max_tokens=409
   assert.match(archSrc, /onToggleCollapse/);
   assert.match(archSrc, /Lỗi \(Quá thời gian\)/);
 
-  assert.equal(RETRY_CONFIG.requestTimeoutMs, 35000);
+  assert.equal(DEFAULT_REQUEST_TIMEOUT_MS, 60000);
+  assert.equal(RETRY_CONFIG.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS);
   assert.equal(RETRY_CONFIG.defaultMaxTokens, 4096);
   assert.equal(RETRY_CONFIG.beat12MaxTokens, 4096);
   assert.deepEqual(RETRY_CONFIG.autoFallbackModels, ['openrouter/free']);
@@ -848,7 +855,7 @@ test('35s timeout AbortController, openrouter/free auto-fallback, max_tokens=409
         fetchFn: mockTimeoutFetch,
       }),
     (err: Error & { isTimeout?: boolean; shortLabel?: string }) =>
-      err.isTimeout === true && err.shortLabel === 'Lỗi Timeout >35s'
+      err.isTimeout === true && err.shortLabel === 'Lỗi Timeout >1s'
   );
 });
 
@@ -1005,7 +1012,10 @@ test('OpenRouter-only UI cleanup, automatic Global Key Fallback on 429/401/402/4
   );
   const timeoutDummy = new Error('Timed out') as Error & { isTimeout?: boolean };
   timeoutDummy.isTimeout = true;
-  assert.equal(buildExactApiErrorInfo('openrouter', 0, '', timeoutDummy, 'openrouter/free').shortLabel, 'Lỗi Timeout >35s');
+  assert.equal(
+    buildExactApiErrorInfo('openrouter', 0, '', timeoutDummy, 'openrouter/free').shortLabel,
+    'Lỗi Timeout >60s'
+  );
 });
 
 test('Right sidebar uses uniform top-4 bottom-4 right-4 viewport framing, internal Thu gọn button, and unified min-h-0 scroll region', () => {
@@ -1452,4 +1462,137 @@ test('17. Security, Bundle Optimization, and Typed Src Module Extraction', () =>
 
   const viteCfg = fs.readFileSync(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
   assert.doesNotMatch(viteCfg, /external:\s*\[['"]three['"]/, 'vite.config.ts must bundle three instead of externalizing it');
+});
+
+test('18. Currency Safety, Pinned CDN Versions, Fast-Fail 401/403, Dynamic 60s Timeout & Transparent Fallback Notice', async () => {
+  // 1) Currency phrases stay plain text with preserved spacing while real inline & display math render cleanly
+  const mdRendererSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/utils/markdownRenderer.ts'), 'utf8');
+  assert.doesNotMatch(
+    mdRendererSrc,
+    /\{\s*left:\s*['"]\$['"],\s*right:\s*['"]\$['"]/,
+    'KaTeX auto-render must NOT include single-dollar $ delimiter'
+  );
+  assert.match(mdRendererSrc, /left:\s*'\$\$'/);
+  assert.match(mdRendererSrc, /left:\s*'\\\\\('/);
+  assert.match(mdRendererSrc, /left:\s*'\\\\\['/);
+
+  const currencyAndMathMd =
+    'Giá sản phẩm tăng từ $100 lên $120 mỗi tháng, biên $50-$80, công thức $I_0 = 100$ và $$BEP = \\frac{FC}{P - VC}$$.';
+  const renderedHtml = renderMarkdownToHtml(currencyAndMathMd, null, null);
+  assert.match(renderedHtml, /tăng từ \$100 lên \$120/);
+  assert.match(renderedHtml, /biên \$50-\$80/);
+  assert.match(renderedHtml, /\\\(I_0 = 100\\\)/);
+  assert.doesNotMatch(renderedHtml, /\\\(100/);
+  assert.match(renderedHtml, /\$\$BEP = \\frac\{FC\}\{P - VC\}\$\$/);
+
+  // 2) Pinned CDN versions + crossorigin="anonymous" in index.html
+  const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  assert.doesNotMatch(
+    html,
+    /cdn\.jsdelivr\.net\/npm\/marked\/marked\.min\.js/,
+    'Unpinned marked CDN URL must not exist'
+  );
+  assert.match(
+    html,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/marked@15\.0\.7\/marked\.min\.js"[\s\S]*?crossorigin="anonymous"/
+  );
+  assert.match(
+    html,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/katex@0\.16\.11\/dist\/katex\.min\.css"[\s\S]*?crossorigin="anonymous"/
+  );
+  assert.match(
+    html,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/katex@0\.16\.11\/dist\/katex\.min\.js"[\s\S]*?crossorigin="anonymous"/
+  );
+  assert.match(
+    html,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/katex@0\.16\.11\/dist\/contrib\/auto-render\.min\.js"[\s\S]*?crossorigin="anonymous"/
+  );
+
+  // 3) No useless retries on 401 or 403 when no distinct fallback API key exists
+  for (const authStatus of [401, 403]) {
+    let calls = 0;
+    const mockAuthFailFetch: typeof fetch = async () => {
+      calls += 1;
+      return new Response(
+        JSON.stringify({ error: { message: `Auth error ${authStatus}` } }),
+        { status: authStatus }
+      );
+    };
+
+    await assert.rejects(
+      () =>
+        callOpenRouterWithKeyFallback({
+          primaryKey: 'sk-or-only-invalid-key',
+          fallbackKey: '',
+          modelId: 'openai/gpt-4o-mini',
+          promptText: 'Test fast fail auth',
+          options: { retryDelayMs: 5, fetchFn: mockAuthFailFetch },
+        }),
+      (err: Error & { status?: number }) => err.status === authStatus
+    );
+    assert.equal(calls, 1, `HTTP ${authStatus} without fallback key must fail immediately in 1 call`);
+  }
+
+  // Distinct fallback key returns 401/403 too -> tries private once + global once = 2 calls max (skips Stage 3 openrouter/free)
+  let doubleAuthCalls = 0;
+  const mockDoubleAuthFetch: typeof fetch = async () => {
+    doubleAuthCalls += 1;
+    return new Response(
+      JSON.stringify({ error: { message: 'Forbidden key' } }),
+      { status: doubleAuthCalls === 1 ? 401 : 403 }
+    );
+  };
+  await assert.rejects(
+    () =>
+      callOpenRouterWithKeyFallback({
+        primaryKey: 'sk-private-bad',
+        fallbackKey: 'sk-global-forbidden',
+        modelId: 'openai/gpt-4o-mini',
+        promptText: 'Test 2-key auth fail fast',
+        options: { retryDelayMs: 5, fetchFn: mockDoubleAuthFetch },
+      }),
+    (err: Error & { status?: number }) => err.status === 403
+  );
+  assert.equal(doubleAuthCalls, 2);
+
+  // 4) Dynamic 60s timeout across src/ (no stale hardcoded 35s)
+  const allSrc = readAllSrcSource();
+  assert.doesNotMatch(allSrc, /35s/, 'No hardcoded 35s timeout string should remain in src/');
+  assert.equal(DEFAULT_REQUEST_TIMEOUT_MS, 60000);
+  assert.equal(
+    buildExactApiErrorInfo('openrouter', 0, '', { name: 'TimeoutError', message: '', isTimeout: true }, 'm', 60000).shortLabel,
+    'Lỗi Timeout >60s'
+  );
+  assert.equal(
+    buildExactApiErrorInfo('openrouter', 0, '', { name: 'TimeoutError', message: '', isTimeout: true }, 'm', 45000).shortLabel,
+    'Lỗi Timeout >45s'
+  );
+
+  // 5) Transparent openrouter/free fallback notice in service, report Markdown, and UI
+  const fbNotice = formatFallbackModelNotice({
+    usedModelFallback: true,
+    rescueModel: 'openrouter/free',
+    fallbackReason: 'Lỗi 404',
+    fallbackFromModel: 'qwen/qwq-32b',
+  });
+  assert.equal(fbNotice, 'Model dự phòng openrouter/free (Lỗi 404) · thay cho qwen/qwq-32b');
+
+  const mdWithFallback = buildFullReportMarkdown({
+    mode: 'econ_business',
+    topic: 'Test fallback transparency',
+    outputs: { assistant: 'Nội dung dự phòng' },
+    actualModels: { assistant: 'openrouter/free' },
+    fallbackNotices: { assistant: fbNotice },
+  });
+  assert.match(mdWithFallback, /Model dự phòng openrouter\/free \(Lỗi 404\)/);
+
+  const uiFallbackSrc = readProjectFiles([
+    'src/App.tsx',
+    'src/components/AgentCard.tsx',
+    'src/components/ReportSections.tsx',
+  ]);
+  assert.match(uiFallbackSrc, /formatFallbackModelNotice/);
+  assert.match(uiFallbackSrc, /data-agent-fallback-notice/);
+  assert.match(uiFallbackSrc, /data-report-fallback-banner/);
 });

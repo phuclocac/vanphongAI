@@ -41,6 +41,7 @@ export interface OfficeAppState {
   outputs: Record<AgentId, string>;
   usedModels: Record<AgentId, string>;
   actualModels: Record<AgentId, string>;
+  fallbackNotices?: Record<AgentId, string>;
   tokenCounts: Record<AgentId, number>;
   errors: Record<AgentId, string>;
   errorTypes: Record<AgentId, ErrorType>;

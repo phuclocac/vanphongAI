@@ -49,6 +49,7 @@ import {
   buildFullReportMarkdown,
   buildMemoryExtractionPrompt,
   callOpenRouterWithKeyFallback,
+  formatFallbackModelNotice,
   normalizeMemoryBullets,
   parseAssistantMemoryExtraction,
   runHybrid3BeatSequence,
@@ -185,6 +186,9 @@ export default function App() {
   const [actualModels, setActualModels] = useState<Record<AgentId, string>>(() =>
     createEmptyAgentMap('')
   );
+  const [fallbackNotices, setFallbackNotices] = useState<Record<AgentId, string>>(() =>
+    createEmptyAgentMap('')
+  );
   const [tokenCounts, setTokenCounts] = useState<Record<AgentId, number>>(() =>
     createEmptyAgentMap(0)
   );
@@ -247,6 +251,7 @@ export default function App() {
     outputs: createEmptyAgentMap<string>(''),
     usedModels: createEmptyAgentMap<string>(''),
     actualModels: createEmptyAgentMap<string>(''),
+    fallbackNotices: createEmptyAgentMap<string>(''),
     tokenCounts: createEmptyAgentMap<number>(0),
     errors: createEmptyAgentMap<string>(''),
     errorTypes: createEmptyAgentMap<ErrorType>(''),
@@ -476,6 +481,7 @@ export default function App() {
       outputs: { ...s.outputs },
       actualModels: { ...s.actualModels },
       usedModels: { ...s.usedModels },
+      fallbackNotices: { ...s.fallbackNotices },
       tokenCounts: { ...s.tokenCounts },
     };
     s.currentSessionId = entry.id;
@@ -672,6 +678,7 @@ export default function App() {
       syncAgentField(s.statuses, setStatuses, agent.id, 'active');
       syncAgentField(s.agentStartedAt, setAgentStartedAt, agent.id, Date.now());
       syncAgentField(s.usedModels, setUsedModels, agent.id, modelId);
+      syncAgentField(s.fallbackNotices, setFallbackNotices, agent.id, '');
       syncAgentField(s.errors, setErrors, agent.id, '');
       syncAgentField(s.errorTypes, setErrorTypes, agent.id, '');
       syncAgentField(s.errorLabels, setErrorLabels, agent.id, '');
@@ -766,8 +773,18 @@ export default function App() {
           }
         }
 
+        const fallbackNotice = formatFallbackModelNotice({
+          usedModelFallback: result.usedModelFallback,
+          rescueModel: result.rescueModel,
+          fallbackReason: result.fallbackReason,
+          fallbackFromModel: result.fallbackFromModel || modelId,
+        });
+        const resolvedActual =
+          result.actualModel || (result.usedModelFallback ? result.rescueModel || 'openrouter/free' : modelId);
+
         syncAgentField(s.outputs, setOutputs, agent.id, finalText);
-        syncAgentField(s.actualModels, setActualModels, agent.id, result.actualModel || modelId);
+        syncAgentField(s.actualModels, setActualModels, agent.id, resolvedActual);
+        syncAgentField(s.fallbackNotices, setFallbackNotices, agent.id, fallbackNotice);
         syncAgentField(s.tokenCounts, setTokenCounts, agent.id, Number(result.totalTokens) || 0);
         syncAgentField(
           s.agentDurations,
@@ -965,13 +982,22 @@ export default function App() {
           },
         });
         const parsedMem = parseAssistantMemoryExtraction(result.text, s.companyMemory);
+        const fallbackNotice = formatFallbackModelNotice({
+          usedModelFallback: result.usedModelFallback,
+          rescueModel: result.rescueModel,
+          fallbackReason: result.fallbackReason,
+          fallbackFromModel: result.fallbackFromModel || modelId,
+        });
+        const resolvedActual =
+          result.actualModel || (result.usedModelFallback ? result.rescueModel || 'openrouter/free' : modelId);
         syncAgentField(s.outputs, setOutputs, 'assistant', parsedMem.cleanReport);
         if (parsedMem.extractedMemory) {
           s.companyMemory = parsedMem.mergedMemory;
           setCompanyMemory(parsedMem.mergedMemory);
           writeStorage(STORAGE_KEYS.companyMemory, parsedMem.mergedMemory);
         }
-        syncAgentField(s.actualModels, setActualModels, 'assistant', result.actualModel || modelId);
+        syncAgentField(s.actualModels, setActualModels, 'assistant', resolvedActual);
+        syncAgentField(s.fallbackNotices, setFallbackNotices, 'assistant', fallbackNotice);
         syncAgentField(
           s.tokenCounts,
           setTokenCounts,
@@ -1161,6 +1187,7 @@ export default function App() {
     s.outputs = createEmptyAgentMap('');
     s.usedModels = createEmptyAgentMap('');
     s.actualModels = createEmptyAgentMap('');
+    s.fallbackNotices = createEmptyAgentMap('');
     s.tokenCounts = createEmptyAgentMap(0);
     s.errors = createEmptyAgentMap('');
     s.errorTypes = createEmptyAgentMap<ErrorType>('');
@@ -1182,6 +1209,7 @@ export default function App() {
     setOutputs({ ...s.outputs });
     setUsedModels({ ...s.usedModels });
     setActualModels({ ...s.actualModels });
+    setFallbackNotices({ ...s.fallbackNotices });
     setTokenCounts({ ...s.tokenCounts });
     setErrors({ ...s.errors });
     setErrorTypes({ ...s.errorTypes });
@@ -1255,9 +1283,10 @@ export default function App() {
         const hasTimeout = outcome.failedAgents.some(
           (f) => Boolean((f as { isTimeout?: boolean }).isTimeout)
         );
+        const timeoutSec = Math.max(1, Math.round(RETRY_CONFIG.requestTimeoutMs / 1000));
         setErrorBannerMsg(
           hasTimeout
-            ? `Nhịp ${outcome.failedBeat}/3 (${names}) gặp ${firstErr?.shortLabel || 'Lỗi Timeout >35s'}. Các bàn đã hoàn thành vẫn được giữ nguyên — hãy bấm "Chạy lại" trên thẻ nhân viên lỗi.`
+            ? `Nhịp ${outcome.failedBeat}/3 (${names}) gặp ${firstErr?.shortLabel || `Lỗi Timeout >${timeoutSec}s`}. Các bàn đã hoàn thành vẫn được giữ nguyên — hãy bấm "Chạy lại" trên thẻ nhân viên lỗi.`
             : `Nhịp ${outcome.failedBeat}/3 (${names}) gặp ${firstErr?.shortLabel || 'lỗi API'} sau khi tự động thử lại. Hãy bấm "Chạy lại" trên thẻ nhân viên lỗi.`
         );
       }
@@ -1307,14 +1336,20 @@ export default function App() {
     const nextOutputs = createEmptyAgentMap('');
     const nextActual = createEmptyAgentMap('');
     const nextUsed = createEmptyAgentMap('');
+    const nextFallback = createEmptyAgentMap('');
     const nextTokens = createEmptyAgentMap(0);
     const nextStatuses = createEmptyAgentMap<AgentStatus>('idle');
+    const histFallback =
+      'fallbackNotices' in entry && entry.fallbackNotices && typeof entry.fallbackNotices === 'object'
+        ? (entry.fallbackNotices as Partial<Record<AgentId, string>>)
+        : undefined;
 
     AGENTS.forEach((a) => {
       const out = entry.outputs?.[a.id] || '';
       nextOutputs[a.id] = out;
       nextActual[a.id] = entry.actualModels?.[a.id] || '';
       nextUsed[a.id] = entry.usedModels?.[a.id] || '';
+      nextFallback[a.id] = histFallback?.[a.id] || '';
       nextTokens[a.id] = Number(entry.tokenCounts?.[a.id]) || 0;
       nextStatuses[a.id] = out ? 'done' : 'idle';
     });
@@ -1322,6 +1357,7 @@ export default function App() {
     s.outputs = nextOutputs;
     s.actualModels = nextActual;
     s.usedModels = nextUsed;
+    s.fallbackNotices = nextFallback;
     s.tokenCounts = nextTokens;
     s.statuses = nextStatuses;
     s.errors = createEmptyAgentMap('');
@@ -1332,6 +1368,7 @@ export default function App() {
     setOutputs(nextOutputs);
     setActualModels(nextActual);
     setUsedModels(nextUsed);
+    setFallbackNotices(nextFallback);
     setTokenCounts(nextTokens);
     setStatuses(nextStatuses);
     setErrors(createEmptyAgentMap(''));
@@ -1383,6 +1420,7 @@ export default function App() {
       actualModels: s.actualModels,
       usedModels: s.usedModels,
       tokenCounts: s.tokenCounts,
+      fallbackNotices: s.fallbackNotices,
     });
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -1407,6 +1445,7 @@ export default function App() {
       actualModels: s.actualModels,
       usedModels: s.usedModels,
       tokenCounts: s.tokenCounts,
+      fallbackNotices: s.fallbackNotices,
     });
     let copied = false;
     try {
@@ -1531,6 +1570,7 @@ export default function App() {
         outputs={outputs}
         actualModels={actualModels}
         usedModels={usedModels}
+        fallbackNotices={fallbackNotices}
         agentModels={agentModels}
         agentApiKeys={agentApiKeys}
         agentSystemPrompts={agentSystemPrompts}

@@ -376,6 +376,8 @@ export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions
 
 export const DEFAULT_FREE_MODEL = 'openrouter/free';
 
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
+
 export const DEPRECATED_FREE_MODELS = [
   'google/gemma-3-27b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
@@ -410,7 +412,7 @@ export const RETRY_CONFIG: RetryConfig = {
   silentRetryDelayMs: 3000,
   beat1CooldownMs: 3000,
   staggerDelayMs: 4000,
-  requestTimeoutMs: 35000,
+  requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   autoFallbackModels: [DEFAULT_FREE_MODEL],
   stableRescueModels: [DEFAULT_FREE_MODEL],
   defaultMaxTokens: 4096,
