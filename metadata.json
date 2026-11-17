@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Văn phòng AI 3D - Chuyên gia Kinh tế \u0026 Kinh doanh",
+  "description": "Ứng dụng văn phòng AI 3D góc nhìn Isometric với 4 chuyên gia kinh tế \u0026 kinh doanh phối hợp tuần tự qua Gemini 2.5 Flash.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
